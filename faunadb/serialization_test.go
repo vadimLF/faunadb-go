@@ -387,15 +387,15 @@ func TestSerializeCreateAccessProvider(t *testing.T) {
 
 	assertJSON(t,
 		CreateAccessProvider(Obj{
-			"name":                "a_provider",
-			"issuer":              "supported_issuer",
-			"jwks_uri":            "https://xxxx.auth0.com",
-			"allowed_roles":       Arr{"roles"},
-			"allowed_collections": Arr{Collection("col")},
+			"name":     "a_provider",
+			"issuer":   "supported_issuer",
+			"jwks_uri": "https://xxxx.auth0.com",
+			"roles":    Arr{"roles"},
+			"data":     Obj{"key": "value"},
 		}),
 		`{"create_access_provider":{"object":{"name":"a_provider","issuer":`+
 			`"supported_issuer","jwks_uri":"https://xxxx.auth0.com",`+
-			`"allowed_roles":["roles"],"allowed_collections":[{"collection":"col"}]}}}`,
+			`"roles":["roles"],"data":{"object":{"key":"value"}}}}}`,
 	)
 }
 
