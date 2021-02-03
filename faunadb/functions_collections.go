@@ -21,8 +21,6 @@ type mapFn struct {
 	Collection Expr `json:"collection"`
 }
 
-func (fn mapFn) String() string { return printFn(fn) }
-
 // Foreach applies the lambda expression on each element of a collection or Page.
 // The original collection is returned.
 //
@@ -43,8 +41,6 @@ type foreachFn struct {
 	Foreach    Expr `json:"foreach"`
 	Collection Expr `json:"collection"`
 }
-
-func (fn foreachFn) String() string { return printFn(fn) }
 
 // Filter applies the lambda expression on each element of a collection or Page.
 // It returns a new collection of the same type containing only the elements in which the
@@ -68,8 +64,6 @@ type filterFn struct {
 	Collection Expr `json:"collection"`
 }
 
-func (fn filterFn) String() string { return printFn(fn) }
-
 // Take returns a new collection containing num elements from the head of the original collection.
 //
 // Parameters:
@@ -87,8 +81,6 @@ type takeFn struct {
 	Take       Expr `json:"take"`
 	Collection Expr `json:"collection"`
 }
-
-func (fn takeFn) String() string { return printFn(fn) }
 
 // Drop returns a new collection containing the remaining elements from the original collection
 // after num elements have been removed.
@@ -108,8 +100,6 @@ type dropFn struct {
 	Drop       Expr `json:"drop"`
 	Collection Expr `json:"collection"`
 }
-
-func (fn dropFn) String() string { return printFn(fn) }
 
 // Prepend returns a new collection that is the result of prepending elems to coll.
 //
@@ -131,8 +121,6 @@ type prependFn struct {
 	Collection Expr `json:"collection"`
 }
 
-func (fn prependFn) String() string { return printFn(fn) }
-
 // Append returns a new collection that is the result of appending elems to coll.
 //
 // Parameters:
@@ -153,8 +141,6 @@ type appendFn struct {
 	Collection Expr `json:"collection"`
 }
 
-func (fn appendFn) String() string { return printFn(fn) }
-
 // IsEmpty returns true if the collection is the empty set, else false.
 //
 // Parameters:
@@ -170,8 +156,6 @@ type isEmptyFn struct {
 	fnApply
 	IsEmpty Expr `json:"is_empty"`
 }
-
-func (fn isEmptyFn) String() string { return printFn(fn) }
 
 // IsNonEmpty returns false if the collection is the empty set, else true
 //
@@ -189,8 +173,6 @@ type isNonEmptyFn struct {
 	IsNonEmpty Expr `json:"is_nonempty"`
 }
 
-func (fn isNonEmptyFn) String() string { return printFn(fn) }
-
 // Contains checks if the provided value contains the path specified.
 //
 // Parameters:
@@ -199,6 +181,8 @@ func (fn isNonEmptyFn) String() string { return printFn(fn) }
 //
 // Returns:
 //  bool - true if the path contains any value, false otherwise.
+//
+// Deprecated: Use ContainsPath instead. Contains will be removed in API v4.
 //
 // See: https://app.fauna.com/documentation/reference/queryapi#miscellaneous-functions
 func Contains(path, value interface{}) Expr {
@@ -211,7 +195,65 @@ type containsFn struct {
 	Value    Expr `json:"in"`
 }
 
-func (fn containsFn) String() string { return printFn(fn) }
+// ContainsPath checks if the provided value contains the path specified.
+//
+// Parameters:
+//  path Path - An array representing a path to check for the existence of. Path can be either strings or ints.
+//  value Object - Value to search against.
+//
+// Returns:
+//  bool - true if the path contains any value, false otherwise.
+//
+// See: https://app.fauna.com/documentation/reference/queryapi#miscellaneous-functions
+func ContainsPath(path, value interface{}) Expr {
+	return containsPathFn{ContainsPath: wrap(path), Value: wrap(value)}
+}
+
+type containsPathFn struct {
+	fnApply
+	ContainsPath Expr `json:"contains_path"`
+	Value        Expr `json:"in"`
+}
+
+// ContainsValue checks if the provided value contains the value specified.
+//
+// Parameters:
+//  value Expr - Value to check for the existence of.
+//  in Expr - An object/array/page/ref to search against.
+//
+// Returns:
+//  bool - true if the value is found, false otherwise.
+//
+// See: https://app.fauna.com/documentation/reference/queryapi#miscellaneous-functions
+func ContainsValue(value, in interface{}) Expr {
+	return containsValueFn{ContainsValue: wrap(value), Value: wrap(in)}
+}
+
+type containsValueFn struct {
+	fnApply
+	ContainsValue Expr `json:"contains_value"`
+	Value         Expr `json:"in"`
+}
+
+// ContainsField checks if the provided value contains the field specified.
+//
+// Parameters:
+//  field Expr - The field to check for the existence of. Field can only be a string.
+//  value Expr - Value to search against.
+//
+// Returns:
+//  bool - true if the field exists, false otherwise.
+//
+// See: https://app.fauna.com/documentation/reference/queryapi#miscellaneous-functions
+func ContainsField(field, value interface{}) Expr {
+	return containsFieldFn{ContainsField: wrap(field), Value: wrap(value)}
+}
+
+type containsFieldFn struct {
+	fnApply
+	ContainsField Expr `json:"contains_field"`
+	Value         Expr `json:"in"`
+}
 
 // Count returns the number of elements in the collection.
 //
@@ -231,8 +273,6 @@ type countFn struct {
 	Count Expr `json:"count"`
 }
 
-func (fn countFn) String() string { return printFn(fn) }
-
 // Sum sums the elements in the collection.
 //
 // Parameters:
@@ -250,8 +290,6 @@ type sumFn struct {
 	fnApply
 	Sum Expr `json:"sum"`
 }
-
-func (fn sumFn) String() string { return printFn(fn) }
 
 // Mean returns the mean of all elements in the collection.
 //
@@ -272,4 +310,21 @@ type meanFn struct {
 	Mean Expr `json:"mean"`
 }
 
-func (fn meanFn) String() string { return printFn(fn) }
+// Reverse accepts a set, array or page and returns the same type with elements in reversed order.
+//
+// Parameters:
+//
+// collection Expr - the collection
+//
+// Returns:
+// a new Expr instance
+//
+// See: https://docs.fauna.com/fauna/current/api/fql/functions/reverse
+func Reverse(collection interface{}) Expr {
+	return reverseFn{Reverse: wrap(collection)}
+}
+
+type reverseFn struct {
+	fnApply
+	Reverse Expr `json:"reverse"`
+}

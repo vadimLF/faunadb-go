@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	f "github.com/fauna/faunadb-go/faunadb"
+	f "github.com/fauna/faunadb-go/v3/faunadb"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -851,6 +851,49 @@ func (s *ClientTestSuite) TestJoin() {
 	s.Require().Equal([]f.RefV{fireball}, spells)
 }
 
+func (s *ClientTestSuite) TestEvalReverse() {
+	data := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
+	var arr []int
+
+	col := s.queryForRef(f.CreateCollection(f.Obj{"name": "reverse_test"}))
+	s.queryForRef(f.CreateIndex(f.Obj{"name": "rev_idx", "source": col, "active": true, "values": f.Arr{f.Obj{"field": f.Arr{"data", "value"}}}}))
+	s.query(
+		f.Foreach(data, f.Lambda("x", f.Create(col, f.Obj{"data": f.Obj{"value": f.Var("x")}}))),
+	)
+
+	//Arrays
+	s.queryAndDecode(f.Reverse(f.Arr{1, 2, 3}), &arr)
+	s.Require().Equal([]int{3, 2, 1}, arr)
+
+	s.queryAndDecode(f.Reverse(f.Arr{1}), &arr)
+	s.Require().Equal([]int{1}, arr)
+
+	s.queryAndDecode(f.Reverse(f.Arr{}), &arr)
+	s.Require().Equal([]int{}, arr)
+
+	//Page and Sets
+	s.queryAndDecode(f.Select("data", f.Reverse(f.Paginate(f.Match(f.Index("rev_idx")), f.Size(3)))), &arr)
+	s.Require().Equal(arr, []int{2, 1, 0})
+
+	s.queryAndDecode(f.Select("data", f.Paginate(f.Reverse(f.Match(f.Index("rev_idx"))), f.Size(3))), &arr)
+	s.Require().Equal(arr, []int{20, 19, 18})
+
+	s.queryAndDecode(f.Select("data", f.Paginate(f.Reverse(f.Reverse(f.Match(f.Index("rev_idx")))))), &arr)
+	s.Require().Equal(arr, data)
+
+	//BadRequests
+
+	_, err := s.client.Query(f.Reverse("a string"))
+	s.Require().Error(err)
+
+	_, err = s.client.Query(f.Reverse(123))
+	s.Require().Error(err)
+
+	_, err = s.client.Query(f.Reverse(f.Obj{"x": 0, "y": 1}))
+	s.Require().Error(err)
+
+}
+
 func (s *ClientTestSuite) TestRange() {
 	data := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
 	var arr f.Arr
@@ -1002,6 +1045,31 @@ func (s *ClientTestSuite) TestEvalFindStrExpression() {
 	s.Require().Equal(13, res)
 }
 
+func (s *ClientTestSuite) TestEvalFindStrRegexExpression() {
+	type match struct {
+		Start int    `fauna:"start"`
+		End   int    `fauna:"end"`
+		Data  string `fauna:"data"`
+	}
+	var res []match
+
+	expected1 := []match{
+		{0, 0, "A"},
+	}
+	expected2 := []match{
+		{3, 3, "A"},
+	}
+
+	s.queryAndDecode(f.FindStrRegex("ABC", "A"), &res)
+	s.Require().Equal(expected1, res)
+
+	s.queryAndDecode(f.FindStrRegex("ABCABC", "A", f.Start(1)), &res)
+	s.Require().Equal(expected2, res)
+
+	s.queryAndDecode(f.FindStrRegex("ABCABCABCABC", "A", f.Start(1), f.NumResults(2)), &res)
+	s.Require().Equal(2, len(res))
+}
+
 func (s *ClientTestSuite) TestEvalLengthExpression() {
 	var res int
 
@@ -1026,7 +1094,10 @@ func (s *ClientTestSuite) TestEvalLTrimExpression() {
 func (s *ClientTestSuite) TestEvalRepeatExpression() {
 	var res string
 
-	s.queryAndDecode(f.Repeat("ABC ", 3), &res)
+	s.queryAndDecode(f.Repeat("a string "), &res)
+	s.Require().Equal("a string a string ", res)
+
+	s.queryAndDecode(f.Repeat("ABC ", f.Number(3)), &res)
 	s.Require().Equal("ABC ABC ABC ", res)
 }
 
@@ -1582,9 +1653,24 @@ func (s *ClientTestSuite) TestNestedKeyRef() {
 	s.Require().NoError(err)
 	result.At(dataField).Get(&keys)
 
+	var parent = &f.RefV{ID: parentDb, Collection: f.NativeDatabases(), Class: f.NativeDatabases()}
+	var nativeKeyRef = &f.RefV{ID: f.NativeKeys().ID, Database: parent}
+
+	var nestedServerKeyRef = f.RefV{
+		ID:         serverKey.ID,
+		Class:      nativeKeyRef,
+		Collection: nativeKeyRef,
+	}
+
+	var nestedAdminKeyRef = f.RefV{
+		ID:         adminKey.ID,
+		Class:      nativeKeyRef,
+		Collection: nativeKeyRef,
+	}
+
 	s.Require().Equal(
 		keys,
-		[]f.RefV{serverKey, adminKey},
+		[]f.RefV{nestedServerKeyRef, nestedAdminKeyRef},
 	)
 }
 
@@ -1609,6 +1695,141 @@ func (s *ClientTestSuite) TestEvalContainsExpression() {
 	)
 
 	s.Require().True(contains)
+}
+
+func (s *ClientTestSuite) TestEvalContainsFunctions() {
+
+	type containsFn func(interface{}, interface{}) f.Expr
+	var b bool
+	var assertContainsFn = func(fn containsFn, val interface{}, data interface{}, expected bool) {
+		s.queryAndDecode(fn(val, data), &b)
+		s.Require().Equal(expected, b)
+	}
+	var assertContainsValue = func(val interface{}, data interface{}, expected bool) {
+		assertContainsFn(f.ContainsValue, val, data, expected)
+	}
+	var assertContainsPath = func(val interface{}, data interface{}, expected bool) {
+		assertContainsFn(f.ContainsPath, val, data, expected)
+	}
+	var assertContainsField = func(val interface{}, data interface{}, expected bool) {
+		assertContainsFn(f.ContainsField, val, data, expected)
+	}
+
+	user := f.Obj{
+		"id": 123,
+		"profile": f.Obj{
+			"email": "email@email.com",
+			"keys": f.Arr{
+				f.Obj{
+					"role":        "admin",
+					"is_verified": false,
+					"key":         "YnlvCg==",
+				},
+				f.Obj{
+					"role": "user",
+					"key":  "emltYmFid2UK",
+					"file": f.Obj{
+						"path":  "/home/user/key.pub",
+						"size":  67343,
+						"perms": f.Arr{"r", "w"},
+					},
+				},
+			},
+			"settings": f.Obj{
+				"pi":   3.14159,
+				"data": f.BytesV{0x00, 0x65},
+			},
+		},
+	}
+
+	//Objects
+	profile := user["profile"].(f.Obj)
+	assertContainsField("id", user, true)
+	assertContainsField("email", user, false)
+	assertContainsField("email", profile, true)
+	assertContainsField("id", profile, false)
+	assertContainsField("role", profile, false)
+	assertContainsField("notexist", user, false)
+
+	assertContainsPath("id", user, true)
+	assertContainsPath("id ", user, false)
+	assertContainsPath(f.Arr{"profile", "settings"}, user, true)
+	assertContainsPath(f.Arr{"profile", "settings", "pi"}, user, true)
+	assertContainsPath(":)", user, false)
+
+	assertContainsValue(3.14159, user, false)
+	assertContainsValue(3.14159, profile["settings"], true)
+	assertContainsValue(f.BytesV{0x00, 0x65}, profile["settings"], true)
+	assertContainsValue(profile, user, true)
+	assertContainsValue(nil, user, false)
+	assertContainsValue(123, user, true)
+
+	//Arrays
+	keys := profile["keys"].(f.Arr)
+	assertContainsPath("role", keys, false)
+	assertContainsPath("role", keys[0], true)
+	assertContainsPath(f.Arr{0, "role"}, keys, true)
+	assertContainsPath("is_verified", keys[1], false)
+	assertContainsPath(f.Arr{0, "role", "file"}, keys, false)
+	assertContainsPath(f.Arr{1, "role", "file", "/home/user/key.pub"}, keys, false)
+	assertContainsPath(f.Arr{"profile", "keys", 1, "file", "perms", 0}, user, true)
+
+	assertContainsValue(3.14159, keys, false)
+	assertContainsValue(keys[0], keys, true)
+	assertContainsValue(keys[1], keys, true)
+	assertContainsValue(nil, keys, false)
+	assertContainsValue(false, keys[0], true)
+
+	//Page and Ref
+	var val f.Value
+	var doc f.RefV
+
+	collName := f.RandomStartingWith("coll_")
+	coll := f.Collection(collName)
+	indexName := f.RandomStartingWith("index_")
+	index := f.Index(indexName)
+
+	s.query(f.CreateCollection(f.Obj{"name": collName}))
+	s.query(f.CreateIndex(f.Obj{"name": indexName, "source": coll, "active": true}))
+	s.queryAndDecode(f.Create(coll, f.Obj{"data": user}), &val)
+	val.At(refField).Get(&doc)
+
+	assertContainsValue(index, f.Select("data", f.Paginate(f.Indexes())), true)
+	assertContainsValue(doc, f.Select("data", f.Paginate(f.Documents(coll))), true)
+	assertContainsValue(user, val, true)
+	assertContainsValue(coll, doc, true)
+	assertContainsValue(val, user, false)
+
+	assertContainsField("collection", doc, true)
+	assertContainsField("ts", val, true)
+	assertContainsField("ref", coll, false)
+	assertContainsField("not-exist", coll, false)
+	assertContainsField("after", f.Paginate(f.Indexes(), f.Size(1)), true)
+
+	assertContainsPath("ref", coll, false)
+	assertContainsPath("ts", coll, false)
+	assertContainsPath("after", f.Paginate(f.Indexes(), f.Size(1)), true)
+	assertContainsPath(f.Arr{"data", 1}, f.Paginate(f.Indexes(), f.Size(2)), true)
+	assertContainsPath(f.Arr{"data", 100}, f.Paginate(f.Indexes(), f.Size(2)), false)
+
+	//Bad Requests
+	_, err := s.client.Query(f.ContainsField(1, user))
+	s.Require().Error(err)
+
+	_, err = s.client.Query(f.ContainsField(nil, user))
+	s.Require().Error(err)
+
+	_, err = s.client.Query(f.ContainsField(user, user))
+	s.Require().Error(err)
+
+	_, err = s.client.Query(f.ContainsValue(1, 1))
+	s.Require().Error(err)
+
+	_, err = s.client.Query(f.ContainsValue("str", "string"))
+	s.Require().Error(err)
+
+	_, err = s.client.Query(f.ContainsValue(true, false))
+	s.Require().Error(err)
 }
 
 func (s *ClientTestSuite) TestEvalSelectExpression() {

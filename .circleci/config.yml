@@ -8,16 +8,13 @@ executors:
         type: string
       version:
         type: enum
-        enum: ["release", "nightly"]
+        enum: ["stable", "nightly"]
     resource_class: large
     docker:
       - image: circleci/golang:<<parameters.go_version>>
 
-      - image: gcr.io/faunadb-cloud/faunadb/enterprise/<<parameters.version>>:latest
+      - image: fauna/faunadb
         name: core
-        auth:
-          username: _json_key
-          password: $GCR_KEY
 
     environment:
       FAUNA_ROOT_KEY: secret
@@ -65,7 +62,7 @@ jobs:
     executor:
       name: core
       go_version: "1.13"
-      version: release
+      version: stable
     steps:
       - build_and_test
 
@@ -81,7 +78,7 @@ jobs:
     executor:
       name: core
       go_version: "1.12"
-      version: release
+      version: stable
     steps:
       - build_and_test
 
@@ -97,7 +94,7 @@ jobs:
     executor:
       name: core
       go_version: "1.11"
-      version: release
+      version: stable
     steps:
       - build_and_test
 

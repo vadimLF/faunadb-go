@@ -549,6 +549,13 @@ func TestSerializeAppend(t *testing.T) {
 	)
 }
 
+func TestSerializeReverse(t *testing.T) {
+	assertJSON(t,
+		Reverse(Arr{1, 2, 3}),
+		`{"reverse":[1,2,3]}`,
+	)
+}
+
 func TestSerializeGet(t *testing.T) {
 	assertJSON(t,
 		Get(Ref("collections/spells/42")),
@@ -703,7 +710,7 @@ func TestSerializeLTrim(t *testing.T) {
 
 func TestSerializeRepeat(t *testing.T) {
 	assertJSON(t,
-		Repeat("0123456789", 2),
+		Repeat("0123456789", Number(2)),
 		`{"number":2,"repeat":"0123456789"}`,
 	)
 }
@@ -1222,6 +1229,41 @@ func TestSerializeContains(t *testing.T) {
 			}},
 		),
 		`{"contains":["favorites","foods"],"in":{"object":{"favorites":{"object":{"foods":["stake"]}}}}}`,
+	)
+}
+
+func TestSerializeContainsPath(t *testing.T) {
+	assertJSON(t,
+		ContainsPath(
+			Arr{"favorites", "foods"},
+			Obj{"favorites": Obj{
+				"foods": Arr{"stake"},
+			}},
+		),
+		`{"contains_path":["favorites","foods"],"in":{"object":{"favorites":{"object":{"foods":["stake"]}}}}}`,
+	)
+}
+
+func TestSerializeContainsValue(t *testing.T) {
+	assertJSON(t,
+		ContainsValue(
+			"steak",
+			Obj{"favorites": Obj{
+				"foods": Arr{"steak"},
+			}},
+		),
+		`{"contains_value":"steak","in":{"object":{"favorites":{"object":{"foods":["steak"]}}}}}`,
+	)
+}
+func TestSerializeContainsField(t *testing.T) {
+	assertJSON(t,
+		ContainsField(
+			"favorites",
+			Obj{"favorites": Obj{
+				"foods": Arr{"steak"},
+			}},
+		),
+		`{"contains_field":"favorites","in":{"object":{"favorites":{"object":{"foods":["steak"]}}}}}`,
 	)
 }
 
