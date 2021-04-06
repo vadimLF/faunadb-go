@@ -40,6 +40,10 @@ func Endpoint(url string) ClientConfig { return func(cli *FaunaClient) { cli.end
 // HTTP allows the user to override the http.Client used by a FaunaClient.
 func HTTP(http *http.Client) ClientConfig { return func(cli *FaunaClient) { cli.http = http } }
 
+func UseHttpVersion1() ClientConfig { return func(cli *FaunaClient) {
+	cli.useHttp1 = true
+}}
+
 /*
 EnableTxnTimePassthrough configures the FaunaClient to keep track of the last seen transaction time.
 The last seen transaction time is used to avoid reading stale data from outdated replicas when
@@ -106,6 +110,7 @@ type FaunaClient struct {
 	queryTimeoutMs   uint64
 	observer         ObserverCallback
 	headers          map[string]string
+	useHttp1         bool
 }
 
 // QueryResult is a structure containing the result context for a given FaunaDB query.
@@ -146,19 +151,24 @@ func NewFaunaClient(secret string, configs ...ClientConfig) *FaunaClient {
 	client.streamEndpoint = client.endpoint + streamURI
 
 	if client.http == nil {
-		dial := func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-			return net.Dial(network, addr)
+		if client.useHttp1 == true {
+			client.http = &http.Client{	}
+		} else {
+			dial := func(network, addr string, cfg *tls.Config) (net.Conn, error) {
+				return net.Dial(network, addr)
+			}
+			if len(client.endpoint) > 5 && client.endpoint[:5] == "https" {
+				dial = nil
+			}
+			transport := &http2.Transport{
+				DialTLS:   dial,
+				AllowHTTP: true,
+			}
+			client.http = &http.Client{
+				Transport: transport,
+			}
 		}
-		if len(client.endpoint) > 5 && client.endpoint[:5] == "https" {
-			dial = nil
-		}
-		transport := &http2.Transport{
-			DialTLS:   dial,
-			AllowHTTP: true,
-		}
-		client.http = &http.Client{
-			Transport: transport,
-		}
+
 	}
 
 	if client.observer == nil {
